@@ -1,0 +1,314 @@
+Section 1 — Getting the overview of the data
+Q1 — Cardinality checks
+
+1. Different color segments (Item_Category)
+
+SELECT COUNT(DISTINCT Item_Category) AS distinct_color_segments,
+       GROUP_CONCAT(DISTINCT Item_Category ORDER BY Item_Category SEPARATOR ', ') AS categories
+FROM sqlproject_item;
+
+
+2. Different coupon types
+
+SELECT COUNT(DISTINCT couponType) AS distinct_coupon_types,
+       GROUP_CONCAT(DISTINCT couponType SEPARATOR ', ') AS coupon_types
+FROM sqlproject_couponmapping;
+
+
+3. States where company delivers
+
+SELECT COUNT(DISTINCT State) AS distinct_states,
+       GROUP_CONCAT(DISTINCT State ORDER BY State SEPARATOR ', ') AS states
+FROM sqlproject_citydata;
+
+4. Different Order Types
+
+SELECT COUNT(DISTINCT OrderType) AS distinct_order_types,
+       GROUP_CONCAT(DISTINCT OrderType SEPARATOR ', ') AS order_types
+FROM sqlproject_customertransactiondata;
+
+
+
+ Q2 — Total number of sales (transactions)
+
+1. Yearly basis
+
+SELECT YEAR(PurchaseDate) AS Year,
+       COUNT(*) AS Total_Transactions
+FROM sqlproject_customertransactiondata
+GROUP BY YEAR(PurchaseDate)
+ORDER BY Year;
+
+2. Quarterly basis
+
+SELECT YEAR(PurchaseDate) AS Year,
+       QUARTER(PurchaseDate) AS Quarter,
+       COUNT(*) AS Total_Transactions
+FROM sqlproject_customertransactiondata
+GROUP BY YEAR(PurchaseDate), QUARTER(PurchaseDate)
+ORDER BY Year, Quarter;
+
+
+3. Yearly and Monthly basis
+
+SELECT YEAR(PurchaseDate) AS Year,
+       MONTH(PurchaseDate) AS Month,
+       COUNT(*) AS Total_Transactions
+FROM sqlproject_customertransactiondata
+GROUP BY YEAR(PurchaseDate), MONTH(PurchaseDate)
+ORDER BY Year, Month;
+
+
+
+Q3 — Total purchase order by
+
+1. Product category
+
+SELECT i.Item_Category,
+       COUNT(ct.Trans_Id) AS transactions,
+       SUM(ct.quantity) AS total_qty,
+       SUM(ct.PurchasingAmt) AS total_amount
+FROM sqlproject_customertransactiondata ct
+JOIN sqlproject_item i ON ct.Item_Id = i.Item_Id
+GROUP BY i.Item_Category
+ORDER BY total_amount DESC;
+
+
+2. Yearly and Quarterly
+# Yearly
+SELECT YEAR(PurchaseDate) AS Year,
+       SUM(quantity) AS total_qty,
+       SUM(PurchasingAmt) AS total_amount
+FROM sqlproject_customertransactiondata
+GROUP BY YEAR(PurchaseDate)
+ORDER BY Year;
+
+# Quarterly
+SELECT YEAR(PurchaseDate) AS Year,
+       QUARTER(PurchaseDate) AS Quarter,
+       SUM(PurchasingAmt) AS total_amount
+FROM sqlproject_customertransactiondata
+GROUP BY YEAR(PurchaseDate), QUARTER(PurchaseDate)
+ORDER BY Year, Quarter;
+
+3. Order Type
+
+
+SELECT OrderType,
+       COUNT(*) AS transactions,
+       SUM(PurchasingAmt) AS total_purchase
+FROM sqlproject_customertransactiondata
+GROUP BY OrderType
+ORDER BY total_purchase DESC;
+
+
+4. City Tier
+
+
+SELECT cd.CityTier,
+       COUNT(ct.Trans_Id) AS transactions,
+       SUM(ct.PurchasingAmt) AS total_purchase
+FROM sqlproject_customertransactiondata ct
+JOIN sqlproject_customer c ON ct.Cust_Id = c.Customer_Id
+JOIN sqlproject_citydata cd ON c.City_Id = cd.City_Id
+GROUP BY cd.CityTier
+ORDER BY cd.CityTier;
+
+
+
+Section 2 — Understanding lead conversions & campaign impact
+
+Q1 — Total transactions WITH campaign coupon vs WITHOUT campaign coupon
+
+
+SELECT
+  SUM(CASE WHEN campaign_id IS NOT NULL THEN 1 ELSE 0 END) AS transactions_with_campaign_coupon,
+  SUM(CASE WHEN campaign_id IS NULL THEN 1 ELSE 0 END) AS transactions_without_campaign_coupon
+FROM sqlproject_customertransactiondata;
+
+
+Q2 — Number of customers whose FIRST purchase was with/without campaign coupon
+
+WITH first_purchase AS (
+  SELECT Cust_Id, MIN(PurchaseDate) AS FirstPurchaseDate
+  FROM sqlproject_customertransactiondata
+  GROUP BY Cust_Id
+)
+SELECT
+  SUM(CASE WHEN ctd.campaign_id IS NOT NULL THEN 1 ELSE 0 END) AS customers_first_purchase_with_campaign,
+  SUM(CASE WHEN ctd.campaign_id IS NULL THEN 1 ELSE 0 END) AS customers_first_purchase_without_campaign
+FROM first_purchase fp
+JOIN sqlproject_customertransactiondata ctd
+  ON fp.Cust_Id = ctd.Cust_Id AND fp.FirstPurchaseDate = ctd.PurchaseDate;
+
+
+Q3 — Unique users with vs without campaign coupon
+
+
+SELECT
+  COUNT(DISTINCT CASE WHEN campaign_id IS NOT NULL THEN Cust_Id END) AS unique_users_with_campaign_coupon,
+  COUNT(DISTINCT CASE WHEN campaign_id IS NULL THEN Cust_Id END) AS unique_users_without_campaign_coupon
+FROM sqlproject_customertransactiondata;
+
+
+Q3b — Purchase amount: campaign vs normal coupon vs no coupon
+
+SELECT
+  SUM(CASE WHEN campaign_id IS NOT NULL THEN PurchasingAmt ELSE 0 END) AS purchase_amt_campaign_coupon,
+  SUM(CASE WHEN campaign_id IS NULL AND coupon_id IS NOT NULL THEN PurchasingAmt ELSE 0 END) AS purchase_amt_normal_coupon,
+  SUM(CASE WHEN campaign_id IS NULL AND coupon_id IS NULL THEN PurchasingAmt ELSE 0 END) AS purchase_amt_no_coupon
+FROM sqlproject_customertransactiondata;
+
+
+Section 3 — Understanding company growth and decline
+
+1a — Growth by quantity (yearly, exclude current year)
+
+SELECT YEAR(PurchaseDate) AS Year,
+       SUM(quantity) AS total_qty
+FROM sqlproject_customertransactiondata
+WHERE YEAR(PurchaseDate) < YEAR(CURDATE())
+GROUP BY YEAR(PurchaseDate)
+ORDER BY Year;
+
+
+1b — Growth by amount (yearly, exclude current year)
+
+
+SELECT YEAR(PurchaseDate) AS Year,
+       SUM(PurchasingAmt) AS total_amount
+FROM sqlproject_customertransactiondata
+WHERE YEAR(PurchaseDate) < YEAR(CURDATE())
+GROUP BY YEAR(PurchaseDate)
+ORDER BY Year;
+
+1c — New customers acquired each year (first purchase year)
+
+
+WITH first_purchase_year AS (
+  SELECT Cust_Id, MIN(YEAR(PurchaseDate)) AS first_year
+  FROM sqlproject_customertransactiondata
+  GROUP BY Cust_Id
+)
+SELECT first_year AS Year, COUNT(*) AS new_customers
+FROM first_purchase_year
+WHERE first_year < YEAR(CURDATE())
+GROUP BY first_year
+ORDER BY first_year;
+
+
+1ci — New customers (first purchase) segregated by OrderType
+
+
+WITH first_txn AS (
+  SELECT ctd.Cust_Id, ctd.OrderType, ctd.PurchaseDate,
+         ROW_NUMBER() OVER (PARTITION BY ctd.Cust_Id ORDER BY ctd.PurchaseDate, ctd.Trans_Id) AS rn
+  FROM sqlproject_customertransactiondata ctd
+), first_txn_filtered AS (
+  SELECT Cust_Id, OrderType, YEAR(PurchaseDate) AS first_year
+  FROM first_txn
+  WHERE rn = 1 AND YEAR(PurchaseDate) < YEAR(CURDATE())
+)
+SELECT first_year AS Year, OrderType, COUNT(*) AS new_customers_count
+FROM first_txn_filtered
+GROUP BY first_year, OrderType
+ORDER BY first_year, OrderType;
+
+2 — Year-by-year decline detection (exclude current year)
+
+]
+WITH yearly_totals AS (
+  SELECT YEAR(PurchaseDate) AS yr, SUM(PurchasingAmt) AS total_amount
+  FROM sqlproject_customertransactiondata
+  WHERE YEAR(PurchaseDate) < YEAR(CURDATE())
+  GROUP BY YEAR(PurchaseDate)
+)
+SELECT yr AS Year,
+       total_amount,
+       total_amount - LAG(total_amount) OVER (ORDER BY yr) AS yoy_change,
+       CASE WHEN total_amount - LAG(total_amount) OVER (ORDER BY yr) < 0 THEN 'decline' ELSE 'increase' END AS trend
+FROM yearly_totals
+ORDER BY yr;
+
+
+3 — Campaign type historical performance (candidate to run next)
+
+
+SELECT cp.CampaignType,
+       COUNT(DISTINCT ctd.Cust_Id) AS unique_customers_reached,
+       SUM(ctd.PurchasingAmt) AS total_revenue_from_campaign
+FROM sqlproject_customertransactiondata ctd
+JOIN sqlproject_campaign cp ON ctd.campaign_id = cp.campaign_id
+WHERE ctd.campaign_id IS NOT NULL
+GROUP BY cp.CampaignType
+ORDER BY unique_customers_reached DESC, total_revenue_from_campaign DESC;
+
+
+
+
+Section 4 — Market Basket Analysis
+
+Q1 — Dates where same customer purchased different products on same day (same OrderType)
+
+
+SELECT a.Cust_Id, DATE(a.PurchaseDate) AS PurchaseDate, a.OrderType, a.Item_Id AS item_1, b.Item_Id AS item_2
+FROM sqlproject_customertransactiondata a
+JOIN sqlproject_customertransactiondata b
+  ON a.Cust_Id = b.Cust_Id
+  AND DATE(a.PurchaseDate) = DATE(b.PurchaseDate)
+  AND a.OrderType = b.OrderType
+  AND a.Item_Id <> b.Item_Id
+  AND a.Trans_Id <> b.Trans_Id
+ORDER BY a.Cust_Id, DATE(a.PurchaseDate);
+
+
+Q2 — Product pairs that appear at least 3 times (descending frequency)
+
+WITH paired AS (
+  SELECT LEAST(a.Item_Id, b.Item_Id) AS item_1,
+         GREATEST(a.Item_Id, b.Item_Id) AS item_2,
+         a.Cust_Id,
+         DATE(a.PurchaseDate) AS purchase_day
+  FROM sqlproject_customertransactiondata a
+  JOIN sqlproject_customertransactiondata b
+    ON a.Cust_Id = b.Cust_Id
+    AND DATE(a.PurchaseDate) = DATE(b.PurchaseDate)
+    AND a.OrderType = b.OrderType
+    AND a.Item_Id <> b.Item_Id
+    AND a.Trans_Id <> b.Trans_Id
+)
+SELECT item_1, item_2, COUNT(*) AS combo_count
+FROM paired
+GROUP BY item_1, item_2
+HAVING COUNT(*) >= 3
+ORDER BY combo_count DESC;
+
+
+Q3 — For combinations (>=3) find popularity by sector (Household/Industrial/Government)
+
+
+WITH paired AS (
+  SELECT LEAST(a.Item_Id, b.Item_Id) AS item_1,
+         GREATEST(a.Item_Id, b.Item_Id) AS item_2,
+         a.Cust_Id,
+         DATE(a.PurchaseDate) AS purchase_day
+  FROM sqlproject_customertransactiondata a
+  JOIN sqlproject_customertransactiondata b
+    ON a.Cust_Id = b.Cust_Id
+    AND DATE(a.PurchaseDate) = DATE(b.PurchaseDate)
+    AND a.OrderType = b.OrderType
+    AND a.Item_Id <> b.Item_Id
+    AND a.Trans_Id <> b.Trans_Id
+), top_combos AS (
+  SELECT item_1, item_2
+  FROM paired
+  GROUP BY item_1, item_2
+  HAVING COUNT(*) >= 3
+)
+SELECT tc.item_1, tc.item_2, c.Sector, COUNT(*) AS sector_count
+FROM paired p
+JOIN top_combos tc ON p.item_1 = tc.item_1 AND p.item_2 = tc.item_2
+JOIN sqlproject_customer c ON p.Cust_Id = c.Customer_Id
+GROUP BY tc.item_1, tc.item_2, c.Sector
+ORDER BY tc.item_1, tc.item_2, sector_count DESC;
+
