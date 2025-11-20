@@ -2,7 +2,12 @@
 
 The objective of this project is to analyze customer transactions, evaluate marketing campaign effectiveness, and understand purchasing patterns to support data-driven decision-making for XYZ Paints. The analysis helps the company identify sales growth/decline trends, customer acquisition behavior, coupon impact, and frequently bought product combinations for targeted promotions.
 
-🗂️ Dataset Used
+🗂️ Dataset Schema
+
+
+
+
+<img width="763" height="482" alt="image" src="https://github.com/user-attachments/assets/02d51dea-f0ee-43fd-ac5c-da76943d9545" />
 
 The project is based on six relational tables stored in a MySQL database:
 
